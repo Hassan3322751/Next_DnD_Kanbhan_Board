@@ -5,6 +5,9 @@ import { ProjectCard } from "@/app/components/projectCard";
 
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchProjects, removeProject, createProject } from '@/Store/projectsSlice';
+import { Button } from "@mui/material";
+
+import ProjectModal from "@/components/projects/ProjectModal"
 
 const Projects = () => {
   const dispatch = useDispatch();
@@ -28,16 +31,31 @@ const Projects = () => {
 
   return (
     <React.Fragment>
-      <button 
-        onClick={() => setIsModalOpen(true)} 
-        className="bg-blue-500 text-white p-2 rounded"
-      >
-          Add Project
-      </button>
-      <div className="projects" style={{display: 'flex', flexWrap: 'wrap'}}>
+      <div className="p-4">
+      <Button
+      variant="contained"
+      onClick={() => setIsModalOpen(true)}
+      sx={{
+        backgroundColor: "rgba(59, 130, 246, 0.7)", // Semi-transparent blue
+        color: "#fff", // Text color
+        borderRadius: "8px", // Rounded corners
+        padding: "10px 20px", // Padding for a larger button
+        boxShadow: "0 4px 20px rgba(0, 0, 0, 0.1)", // Subtle shadow
+        transition: "background-color 0.3s, transform 0.2s", // Smooth transition
+        "&:hover": {
+          backgroundColor: "rgba(37, 99, 235, 0.8)", // Darker shade on hover
+          transform: "translateY(-2px)", // Lift effect on hover
+        },
+        "&:active": {
+          transform: "translateY(0)", // Reset lift effect on click
+        },
+      }}
+    >
+      Add Project
+    </Button>
+        <div className="flex flex-wrap gap-4 mt-4">
         {
           projects.map((project: any, index: number) => (
-            <div key={index}>
               <ProjectCard
                 key={index}
                 id={project._id}
@@ -46,45 +64,19 @@ const Projects = () => {
                 createdAt={project.createdAt}
                 handleDelete={handleDelete}
               />
-            </div>
           ))
         }
-
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex justify-center items-center">
-            <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-              <h2 className="text-lg font-bold mb-4">Add New Task</h2>
-
-              <input
-                type="text"
-                placeholder="Task name"
-                value={newProject.name}
-                onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                className="border p-2 w-full mb-4"
-              />
-
-              <textarea
-                placeholder="Task Description"
-                value={newProject.description}
-                onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                className="border p-2 w-full mb-4"
-              ></textarea>
-
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="bg-gray-400 text-white p-2 rounded mr-2"
-                >
-                  Cancel
-                </button>
-                <button onClick={handleAddProject} className="bg-blue-500 text-white p-2 rounded">
-                  Add Task
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
+
+      <ProjectModal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        projectData={newProject}
+        setProjectData={setNewProject}
+        handleSubmit={handleAddProject}
+      />
+
     </React.Fragment>
   )
 }

@@ -18,10 +18,10 @@ export const updateTaskStage = createAsyncThunk('tasks/updateTaskStage', async (
 
 // Async thunk for updating task order
 export const updateTaskOrder = createAsyncThunk('tasks/updateTaskOrder', async (
-    { taskId, sourceStageId, newTasksOrder, newIndex }
+    { taskId, sourceStageId, srcNewTasksOrder, newIndex }
 ) => {
-    let response = {taskId, sourceStageId, newTasksOrder, newIndex}
-    updateTaskOrderApi(taskId, newTasksOrder);
+    let response = {taskId, sourceStageId, newTasksOrder: srcNewTasksOrder, newIndex}
+    updateTaskOrderApi(taskId, srcNewTasksOrder);
     return response; // Assuming the response contains the updated task
 });
 
@@ -52,48 +52,36 @@ export const getTasksByStage = createAsyncThunk('tasks/getTasksByStage', async (
     return singleColumnTasks
 });
 
-// export const getTasksByStage = createAsyncThunk('tasks/getTasksByStage', async ({ stages, page }) => {
-//     let finalTasks = []
-    
-//     let singleColumnTasks = await Promise.all(
-//         stages.map(async (stage, index) => {
-//             let singleColumnTasks = {
-//                 stageId: '',
-//                 stageName: '',
-//                 tasks: []
-//             };
+export const loadMoreTasks = createAsyncThunk('tasks/loadMoreTasks', async ({ id }, {getState}) => {
+    const { tasks } = getState().tasksData;
 
-//             let tasks = await Promise.all(
-//                 stage.taskIds.map(async (taskId, index) => {
-//                     const task = await getTaskApi(taskId, page);
-//                     return task
-//                 })
-//             )
-//             singleColumnTasks.stageId = stage._id;
-//             singleColumnTasks.stageName = stage.name;
-//             singleColumnTasks.tasks = tasks;
-            
-//             return singleColumnTasks
-//             // finalTasks.push(singleColumnTasks)
-//         })
-//     )
-//     // console.log(singleColumnTasks)
+    // Use map to create an array of promises
+    let res = {};
 
-//     return singleColumnTasks
-//     // return response; // Assuming the response contains tasks and hasMore
-// });
+    await Promise.all(
+        tasks.map(async (tasksObj) => {
+            const { stageId, hasMore, currentPage } = tasksObj;
 
-// Async thunk for adding a task
+            if (stageId === id && hasMore) {
+                res = await getTasksByStageApi(stageId, +currentPage + 1);
+                return
+            }
+        })
+    );
+    res = {...res, stageId: id}
 
-export const addTask = createAsyncThunk('tasks/addTask', async ({ task, stageId }) => {
-    const response = await addTaskApi(task, stageId);
-    return response; // Assuming the response contains the added task
+    return res; // Return the array of results
+});
+
+export const addTask = createAsyncThunk('tasks/addTask', async ({ task, id }) => {
+    const res = await addTaskApi(task, id);
+    return res; // Assuming the response contains the added task
 });
 
 // Async thunk for deleting a task
-export const deleteTask = createAsyncThunk('tasks/deleteTask', async (taskId) => {
+export const deleteTask = createAsyncThunk('tasks/deleteTask', async ({taskId, stageId}) => {
     await deleteTaskApi(taskId);
-    return taskId; // Return the ID of the deleted task
+    return {taskId, stageId}; // Return the ID of the deleted task
 });
 
 // Async thunk for getting a task
@@ -103,9 +91,9 @@ export const getTask = createAsyncThunk('tasks/getTask', async (taskId) => {
 });
 
 // Async thunk for updating a task
-export const patchTask = createAsyncThunk('tasks/patchTask', async (task) => {
-    const response = await patchTaskApi(task);
-    return response; // Assuming the response contains the updated task
+export const patchTask = createAsyncThunk('tasks/patchTask', async ({stageId, newTask}) => {
+    const response = patchTaskApi(newTask);
+    return {stageId, patchedTask: newTask}; // Assuming the response contains the updated task
 });
 
 const tasksSlice = createSlice({
@@ -120,6 +108,28 @@ const tasksSlice = createSlice({
             state.tasks = [];
             state.hasMore = true;
         },
+        updateTaskOrder: async(state, action) => {
+            const { sourceStageId, newTasksOrder } = action.payload;
+            const sourceColumnIndex = state.tasks.findIndex(tasksObj => tasksObj.stageId === sourceStageId);
+            
+            // Create a new array for updated tasks based on newTasksOrder
+            const updatedTasks = newTasksOrder.map(taskId => {
+                return current(state).tasks[sourceColumnIndex].tasks.find(task => task._id === taskId);
+            });
+            
+            // Create a new state object to avoid direct mutation
+            const newTasks = current(state.tasks).map((tasksObj, index) => {
+                if (tasksObj.stageId === sourceStageId) {
+                    // Create a new tasks array with the updated order
+                    return {
+                        ...tasksObj,
+                        tasks: updatedTasks // Assign the reordered tasks
+                    };
+                }
+                return tasksObj; // Return the original tasksObj for other stages
+            });
+            state.tasks = newTasks 
+        }
     },
     extraReducers: (builder) => {
         builder
@@ -143,71 +153,80 @@ const tasksSlice = createSlice({
                         sourceColumIndex = index
                     }
                 })
-                state.tasks[sourceColumIndex].tasks.splice(newIndex, 0, targetTask !== null && targetTask);
-            })
+                state.tasks[sourceColumIndex].tasks.splice(newIndex, 0, targetTask);
+            })    
             .addCase(updateTaskOrder.fulfilled, (state, action) => {
-                // Update the task order in the state if needed
-                const updatedTask = action.payload;
-                const {taskId, sourceStageId, newIndex} = updatedTask
-
-                let targetTask = {};
-                let taskIndex = null;
-                let sourceColumIndex = null;
-
-                current(state.tasks).forEach((tasksObj, index) => {
-
-                    if(tasksObj.stageId === sourceStageId){
-
-                        tasksObj.tasks.map((task, taskInd) =>{
-                            if(task._id === taskId){
-                                targetTask = task
-                                sourceColumIndex = index
-                                taskIndex = taskInd
-                            }
-                            return task._id !== taskId
-                        })
-                        return
-                    }
-                })
-                state.tasks[sourceColumIndex].tasks.splice(taskIndex, 1);
-                state.tasks[sourceColumIndex].tasks.splice(newIndex, 0, targetTask !== null && targetTask);
+                tasksSlice.caseReducers.updateTaskOrder(state, action);
             })
             .addCase(getTasksByStage.pending, (state) => {
                 state.loading = true;
             })
             .addCase(getTasksByStage.fulfilled, (state, action) => {
-                action.payload && action.payload.map((tasksObj, index) =>{
-                  state.tasks.push(tasksObj)  
-                });
+                state.tasks = action.payload ? action.payload : state.tasks
                 state.loading = false;
-
-                // console.log("state Tasks: ")
-                // console.log(current(state.tasks))
-
-                // state.hasMore = action.payload.hasMore;
             })
             .addCase(getTasksByStage.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.error.message;
             })
+            .addCase(loadMoreTasks.pending, (state) => {
+                state.loading = true;
+            })
+            .addCase(loadMoreTasks.fulfilled, (state, action) => {
+                const {tasks, stageId, hasMore, currentPage} = action.payload
+                
+                action.payload && state.tasks.map((tasksObj, index) =>{
+                    if(tasksObj.stageId === stageId){
+                        const updateTasks = [...current(state.tasks[index].tasks), ...tasks]
+
+                        state.tasks[index].tasks = updateTasks; // Add the new task to the tasks array
+                        state.tasks[index].hasMore = hasMore; // Add the new task to the tasks array
+                        state.tasks[index].currentPage = currentPage; // Add the new task to the tasks array
+                    }  
+                });
+
+                state.loading = false;
+            })
+            .addCase(loadMoreTasks.rejected, (state, action) => {
+                state.loading = false;
+                state.error = action.error.message;
+            })
             .addCase(addTask.fulfilled, (state, action) => {
-                state.tasks.push(action.payload); // Add the new task to the tasks array
+                const newTask = action.payload;
+                const targetStageId = newTask.stageId;
+
+                state.tasks.find((tasksObj, index) => {
+                    if(tasksObj.stageId === targetStageId){
+                        state.tasks[index].tasks.push(newTask); // Add the new task to the tasks array
+                    }
+                   return
+                })
             })
             .addCase(deleteTask.fulfilled, (state, action) => {
-                state.tasks = state.tasks.filter(task => task._id !== action.payload); // Remove the deleted task
+                const {taskId, stageId} = action.payload;
+                
+                state.tasks.find((tasksObj, index) => {
+                    if(tasksObj.stageId === stageId){
+                        state.tasks[index].tasks = state.tasks[index].tasks.filter(task => task._id !== taskId); // Add the new task to the tasks array
+                    }
+                   return
+                })
             })
             .addCase(getTask.fulfilled, (state, action) => {
-                action.payload && state.tasks.push(action.payload);
                 // const index = state.tasks.findIndex(task => task._id === action.payload._id);
                 // if (index !== -1) {
                 //     state.tasks[index] = action.payload; // Update the task in the state
                 // }
             })
             .addCase(patchTask.fulfilled, (state, action) => {
-                const index = state.tasks.findIndex(task => task._id === action.payload._id);
-                if (index !== -1) {
-                    state.tasks[index] = action.payload; // Update the task in the state
-                }
+                const {stageId, patchedTask} = action.payload;
+                
+                state.tasks.find((tasksObj, index) => {
+                    if(tasksObj.stageId === stageId){
+                        state.tasks[index].tasks.find((task, tIndex) => task._id === patchedTask._id && state.tasks[index].tasks.splice(tIndex, 1, patchedTask)); // Add the new task to the tasks array
+                    }
+                   return
+                })
             });
     },
 });

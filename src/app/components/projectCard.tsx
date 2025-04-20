@@ -1,37 +1,44 @@
+"use client";
+import { useState } from "react";
 import Link from "next/link";
-import './projectCard.css'
+import { Card, CardContent, Typography, IconButton, Menu, MenuItem } from "@mui/material";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import { useSelector } from "react-redux";
 
-export const ProjectCard = ({ id, name, description, createdAt, handleDelete }) => {
-    function handleClick(e){
-        if (e.target.closest('.task_delete')) {
-            return;
-        }
-    }
-    
-    return (
-        <Link href={`/project/${id}`} className={`task_card`} 
-            // onClick={(e) => handleClick(e)}
-        >
-            <div className='task_card_bottom_line'>
-                <div className='task_card_tags'>
-                    <b className='task_text'>{name}</b>
-                    <p>{description}</p>
-                </div>
-                <button
-                    className='task_delete'
-                        onClick={(e) => {
-                            e.preventDefault()
-                            // handleDelete(id)
-                        }}
-                    >
-                    {/* <img src={deleteIcon} className='delete_icon' alt='' /> */}
-                </button>
-            </div>
-            <div className='task_card_bottom_line'>
-                <div className='task_card_tags'>
-                    {createdAt}
-                </div>
-            </div>
+export const ProjectCard = ({ id, name, description, createdAt, handleDelete, handleEdit }) => {
+  const theme = useSelector((state) => state.theme.theme);
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  const openMenu = (event) => setAnchorEl(event.currentTarget);
+  const closeMenu = () => setAnchorEl(null);
+
+  return (
+    <Card
+      className={`w-80 shadow-lg transition-all duration-300 p-2 rounded-xl border 
+        ${theme === "dark" ? "bg-gray-900 border-gray-700 text-white" : "bg-white border-gray-300 text-black"}`}
+    >
+      <CardContent>
+        <Link href={`/project/${id}`} className="no-underline">
+          <Typography variant="h6" className="font-semibold truncate">
+            {name}
+          </Typography>
+          <Typography variant="body2" className="text-gray-500 truncate">
+            {description}
+          </Typography>
+          <Typography variant="caption" className="text-gray-400">
+            {createdAt}
+          </Typography>
         </Link>
-    );
+        <div className="flex justify-end">
+          <IconButton onClick={openMenu} className="text-gray-500">
+            <MoreVertIcon />
+          </IconButton>
+          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={closeMenu}>
+            <MenuItem onClick={() => { handleEdit(id); closeMenu(); }}>Edit</MenuItem>
+            <MenuItem onClick={() => { handleDelete(id); closeMenu(); }} className="text-red-500">Delete</MenuItem>
+          </Menu>
+        </div>
+      </CardContent>
+    </Card>
+  );
 };

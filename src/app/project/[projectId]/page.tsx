@@ -3,10 +3,13 @@
 import React, { useState, useEffect } from "react";
 import StageColumn from "@/app/components/Stage/stageColumn";
 import { useDispatch, useSelector } from "react-redux";
-import { addStage, deleteStage, fetchProject, setStages, setStageTasksOrder } from "@/Store/projectSlice";
-import { getTasksByStage, updateTaskOrder, updateTaskStage } from "@/Store/tasksSlice";
+import { Button, Paper, Skeleton, Typography } from "@mui/material";
+import { AddCircleOutline } from "@mui/icons-material";
 
-// import { useRouter } from 'next/router';
+import { addStage, deleteStage, fetchProject, setStageTasksOrder } from "@/Store/projectSlice";
+import { updateTaskOrder, updateTaskStage } from "@/Store/tasksSlice";
+import StageColumnSkeleton from "@/skeletons/stageColumnSkelton"
+import StageModal from "@/components/stageColumn/modal"
 
 const Project = ({
   params
@@ -29,14 +32,13 @@ const Project = ({
 
     const projectData = useSelector((data) => data.projectData);
     const {project, stages, loading, error}= projectData;
+
+    const theme = useSelector((state) => state.theme.theme);
+    const isDarkMode = theme === "dark";
     
     useEffect(() => {
-        if (stages?.length) {
-            dispatch(getTasksByStage({ stages, page: currentPage }));
-        } else{
-            dispatch(fetchProject(id))
-        }
-    }, [id, stages, dispatch]);
+      dispatch(fetchProject({id, dispatch}))
+    }, [id]);
     
     const tasksData = useSelector((data) => data.tasksData);
     const {tasks, tasksSliceLoading, tasksSliceError} = tasksData;
@@ -71,138 +73,140 @@ const Project = ({
       }
       try {
           const newStages = [...stages]; // Use stages from Redux store
-          let stageIndex = null
+          let srcStageIndex = null
+          let destStageIndex = null
           
           const sourceStage = newStages.find((stage, index) => {
             if(stage._id === activeCard.stageId){
-                stageIndex = index
+                srcStageIndex = index
                 return stage._id === activeCard.stageId
             }
           });
           
-          const destinationStage = newStages.find((stage) => stage._id === destination.id);
+          // const destinationStage = newStages.find((stage) => stage._id === destination.id);
+          const destinationStage = newStages.find((stage, index) => {
+            if(stage._id === destination.id){
+                destStageIndex = index
+                return stage._id === destination.id
+            }
+          });
 
           const sourceTaskIds = Array.from(sourceStage.taskIds);
           const destinationTaskIds = Array.from(destinationStage.taskIds);
 
           if (activeCard.stageId === destination.id) {
             const [movedTaskId] = sourceTaskIds.splice(activeCard.stageIndex, 1);
-            sourceTaskIds.splice(destination.index, 0, movedTaskId);
+            if(destination.index > activeCard.stageIndex){
+              sourceTaskIds.splice(destination.index - 1, 0, movedTaskId);
+            } else{
+              sourceTaskIds.splice(destination.index, 0, movedTaskId);
+            }
           } else {
             const [movedTaskId] = sourceTaskIds.splice(activeCard.stageIndex, 1);
             destinationTaskIds.splice(destination.index, 0, movedTaskId);
           }
 
           // Call handleDragEnd to update the backend
-          handleDragEnd(activeCard.cardId, sourceStage._id, destination.id, destination.index, sourceTaskIds, stageIndex);
+          handleDragEnd(activeCard.cardId, sourceStage._id, destination.id, destination.index, 
+          sourceTaskIds, srcStageIndex, destinationTaskIds, destStageIndex);
 
       } catch (error) {
           console.error("Failed to update task stage:", error);
       }
   };
 
-  const handleDragEnd = async (taskId, sourceStageId, destinationStageId, newIndex, newTasksOrder, stageIndex) => {
+  const handleDragEnd = async (taskId, sourceStageId, destinationStageId,
+    newIndex, srcNewTasksOrder, srcStageIndex, destNewTasksOrder, destStageIndex
+  ) => {
       try {
           if (sourceStageId !== destinationStageId) {
-              await dispatch(updateTaskStage({ taskId, sourceStageId, destinationStageId, newIndex }));
+            dispatch(updateTaskStage({ taskId, sourceStageId, destinationStageId, newIndex }));
+            dispatch(setStageTasksOrder({srcStageIndex, srcNewTasksOrder, destStageIndex, destNewTasksOrder}))
           } else {
-              await dispatch(setStageTasksOrder({stageIndex, newTasksOrder}))
-              await dispatch(updateTaskOrder({ taskId, sourceStageId, newTasksOrder, newIndex }));
+            dispatch(updateTaskOrder({ taskId, sourceStageId, srcNewTasksOrder, newIndex }));
+            dispatch(setStageTasksOrder({srcStageIndex, srcNewTasksOrder}))
           }
       } catch (error) {
           console.error("Failed to update task stage/order in backend:", error);
       }
   };
 
-    if (loading || tasksSliceLoading) {
-        return <p>Loading...</p>;
-    }
-
     return(
         <React.Fragment>
-            <p>Project - {id}</p>
-            <p>Project Name - {project && project.name}</p>
-            <p>Project Description - {project && project.description}</p>
-            <p>Task Id - {activeCard.cardId}</p>
-            <button 
-                onClick={() => setIsModalOpen(true)} 
-                className="bg-blue-500 text-white p-2 rounded"
+           <div className="p-4 space-y-4">
+            {/* Project Details */}
+            <Paper
+      elevation={isDarkMode ? 8 : 4}
+      className={`p-6 rounded-2xl transition-all duration-300 
+        ${isDarkMode ? "bg-gray-900 text-gray-100" : "bg-white text-gray-800"} 
+        shadow-lg backdrop-blur-lg border border-gray-300/10 dark:border-gray-800/50`}
+      sx={{
+        backdropFilter: "blur(10px)", // Frosted glass effect
+      }}
+    >
+      <>
+        <Typography variant="h6" className="font-semibold opacity-80">
+          Project - {id || <Skeleton variant="text" width="50%" height={40} />}
+        </Typography>
+
+        <Typography variant="h5" className="font-bold">
+          {project?.name || <Skeleton variant="text" width="50%" height={40} />}
+        </Typography>
+
+        <Typography variant="body1" className="opacity-70">
+          {project?.description || <Skeleton variant="text" width={"40%"} height={40} className="mt-2" />}
+        </Typography>
+
+        <Typography variant="body2" className="text-sm opacity-60 mt-2">
+          Task ID: {activeCard?.cardId || "No Active Task"}
+        </Typography>
+      </>
+    </Paper>
+
+            {/* Add Stage Button */}
+            <Button
+                variant="contained"
+                startIcon={<AddCircleOutline />}
+                onClick={() => setIsModalOpen(true)}
+                disabled={loading}
+                className="!bg-blue-500 hover:!bg-blue-600 text-white px-4 py-2 rounded-md shadow-md transition"
             >
                 Add Stage
-            </button>
-            <div className="stages" style={{display: 'flex'}}>
-            
-            {
-              (!tasksSliceLoading && tasks) && tasks.map((task, index) => {
-                // console.log(task)
-                // tasks && 
-                return(
-                  //   stage={stage}
-                <StageColumn
-                  key={index} 
-                  stages={stages}
-                  id={task.stageId}
-                  title={tasks.stageName}
-                  handleDelete={handleDelete}
-                  setActiveCard={setActiveCard}
-                  activeCard={activeCard}
-                  stageData={stages}
-                  tasks={task.tasks}
-                  // moveTask={moveTask}
-                  // updateOrder={updateOrder}
-                  onDrop={onDrop}
-                />
-              )
-              }
-            )
-            }
-            {/* {
-              stages && stages.map((stage, index) => stage && (
-                <StageColumn
-                  key={index} 
-                  stage={stage}
-                  stages={stages}
-                  id={stage._id}
-                  title={stage.name}
-                  handleDelete={handleDelete}
-                  setActiveCard={setActiveCard}
-                  activeCard={activeCard}
-                  stageData={stages}
-                  // moveTask={moveTask}
-                  // updateOrder={updateOrder}
-                  onDrop={onDrop}
-                />
-              ))
-            } */}
+            </Button>
 
-            {isModalOpen && (
-                <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex justify-center items-center">
-                    <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-                    <h2 className="text-lg font-bold mb-4">Add New Stage</h2>
-
-                    <input
-                        type="stage"
-                        placeholder="Stage name"
-                        value={newStage.name}
-                        onChange={(e) => setNewStage({ ...newStage, name: e.target.value })}
-                        className="border p-2 w-full mb-4"
-                    />
-
-                    <div className="flex justify-end">
-                        <button
-                        onClick={() => setIsModalOpen(false)}
-                        className="bg-gray-400 text-white p-2 rounded mr-2"
-                        >
-                        Cancel
-                        </button>
-                        <button onClick={handleAddStage} className="bg-blue-500 text-white p-2 rounded">
-                            Add Stage
-                        </button>
-                    </div>
-                    </div>
-                </div>
+            {/* Stages */}
+            <div className="stages flex flex-wrap gap-4 mt-4">
+                {(loading || stages?.length) ? (
+                    tasks.map((task, index) => (
+                        <StageColumn
+                            key={index}
+                            stages={stages}
+                            id={task.stageId}
+                            title={task.stageName}
+                            handleDelete={handleDelete}
+                            setActiveCard={setActiveCard}
+                            activeCard={activeCard}
+                            stageData={stages}
+                            tasks={task.tasks}
+                            onDrop={onDrop}
+                            hasMore={task.hasMore}
+                        />
+                    ))
+                ) : (
+                  Array.from({ length: 3 }).map((_, idx) => (
+                    <StageColumnSkeleton key={idx} />
+                  ))
                 )}
             </div>
+
+            <StageModal
+              open={isModalOpen}
+              onClose={() => setIsModalOpen(false)}
+              stageName={newStage}
+              setStageName={setNewStage}
+              handleSubmit={handleAddStage}
+            />
+        </div>
         </React.Fragment>
     ) 
 };
